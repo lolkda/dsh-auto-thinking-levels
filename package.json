@@ -20,7 +20,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "check:pack": "node scripts/check-pack.mjs"
   },
   "keywords": [
     "dsh",

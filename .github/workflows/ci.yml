@@ -38,18 +38,4 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
-      # The published artifact is the contract, so the file list is asserted
-      # rather than trusted: a stray file or a missing one fails here.
-      - name: Inspect the tarball contents
-        run: npm pack --dry-run --json > pack.json && node -e '
-          const files = JSON.parse(require("fs").readFileSync("pack.json", "utf8"))[0].files
-            .map((f) => f.path).sort();
-          const required = ["LICENSE", "README.md", "cordis.patch.yml", "index.js", "lib/plan.js", "package.json"];
-          const missing = required.filter((r) => !files.includes(r));
-          const unwanted = files.filter((f) => f.startsWith("test/") || f.startsWith("verification/") || f.startsWith("probe"));
-          if (missing.length || unwanted.length) {
-            console.error("missing:", missing, "unwanted:", unwanted);
-            process.exit(1);
-          }
-          console.log("tarball contents ok:", files.join(", "));
-        '
+      - run: npm run check:pack
