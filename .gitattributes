@@ -1,0 +1,4 @@
+# Keep the checkout byte-identical to the published tarball on every platform.
+# The CI steps are shell, and a CRLF checkout of a YAML patch or a JS module is
+# a difference nobody wants to debug.
+* text=auto eol=lf

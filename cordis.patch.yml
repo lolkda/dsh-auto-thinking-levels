@@ -1,0 +1,30 @@
+# dsh-auto-thinking-levels — mounts one Host row.
+#
+# `fill: complete` is the shipped policy: every model of every route in the
+# namespace below is brought to the full thinking-level set, and a model that
+# already spells some levels keeps its own spellings. Use `fill: missing` to
+# leave a deliberately partial table alone instead.
+- insert:
+    - id: dsh-auto-thinking-levels
+      name: dsh-auto-thinking-levels
+      config:
+        fill: complete
+        # Settings namespace to configure. Default: llm-pi-ai
+        #   namespace: llm-pi-ai
+        #
+        # The table written, as level -> wire spelling. `off: null` means
+        # "supported, send nothing". Default:
+        #   levels:
+        #     off: null
+        #     minimal: minimal
+        #     low: low
+        #     medium: medium
+        #     high: high
+        #     xhigh: xhigh
+        #     max: max
+        #
+        # Provider routes to configure; empty means every registered route.
+        #   providers: []
+        #
+        # false mounts the row without touching settings.
+        #   enabled: true

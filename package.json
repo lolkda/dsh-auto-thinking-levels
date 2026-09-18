@@ -1,0 +1,51 @@
+{
+  "name": "dsh-auto-thinking-levels",
+  "version": "0.1.0",
+  "description": "DSH Host plugin: keep every llm-pi-ai provider route offering the full thinking-level set by writing the missing reasoningEfforts tables into that namespace's settings.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./plan": "./lib/plan.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib/",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "cordis-plugin",
+    "plugin",
+    "llm",
+    "reasoning-effort",
+    "thinking-levels",
+    "reasoningEfforts"
+  ],
+  "license": "MIT",
+  "author": "lolkda",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lolkda/dsh-auto-thinking-levels.git"
+  },
+  "homepage": "https://github.com/lolkda/dsh-auto-thinking-levels#readme",
+  "bugs": {
+    "url": "https://github.com/lolkda/dsh-auto-thinking-levels/issues"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

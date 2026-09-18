@@ -1,0 +1,199 @@
+{
+  "providers": {
+    "deepseek-official": {
+      "models": {
+        "deepseek-flash": {
+          "reasoning": {
+            "efforts": [
+              "off",
+              "low",
+              "high",
+              "max",
+              "auto"
+            ],
+            "defaultEffort": "high"
+          },
+          "accepted": {
+            "off": "ok",
+            "minimal": "UNSUPPORTED_REASONING_EFFORT",
+            "low": "ok",
+            "medium": "UNSUPPORTED_REASONING_EFFORT",
+            "high": "ok",
+            "xhigh": "UNSUPPORTED_REASONING_EFFORT",
+            "max": "ok"
+          }
+        },
+        "deepseek-v4-pro": {
+          "reasoning": {
+            "efforts": [
+              "off",
+              "low",
+              "high",
+              "max",
+              "auto"
+            ],
+            "defaultEffort": "high"
+          },
+          "accepted": {
+            "off": "ok",
+            "minimal": "UNSUPPORTED_REASONING_EFFORT",
+            "low": "ok",
+            "medium": "UNSUPPORTED_REASONING_EFFORT",
+            "high": "ok",
+            "xhigh": "UNSUPPORTED_REASONING_EFFORT",
+            "max": "ok"
+          }
+        }
+      }
+    },
+    "cpa": {
+      "models": {
+        "deepseek-v4-flash-0731": {
+          "reasoning": {
+            "efforts": [
+              "off",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              "auto"
+            ],
+            "defaultEffort": null
+          },
+          "accepted": {
+            "off": "ok",
+            "minimal": "ok",
+            "low": "ok",
+            "medium": "ok",
+            "high": "ok",
+            "xhigh": "ok",
+            "max": "ok"
+          }
+        },
+        "glm-5.3-flash": {
+          "reasoning": {
+            "efforts": [
+              "off",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              "auto"
+            ],
+            "defaultEffort": null
+          },
+          "accepted": {
+            "off": "ok",
+            "minimal": "ok",
+            "low": "ok",
+            "medium": "ok",
+            "high": "ok",
+            "xhigh": "ok",
+            "max": "ok"
+          }
+        },
+        "deepseek-flash": {
+          "reasoning": {
+            "efforts": [
+              "off",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              "auto"
+            ],
+            "defaultEffort": null
+          },
+          "accepted": {
+            "off": "ok",
+            "minimal": "ok",
+            "low": "ok",
+            "medium": "ok",
+            "high": "ok",
+            "xhigh": "ok",
+            "max": "ok"
+          }
+        },
+        "gpt-6-astra": {
+          "reasoning": {
+            "efforts": [
+              "off",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              "auto"
+            ],
+            "defaultEffort": null
+          },
+          "accepted": {
+            "off": "ok",
+            "minimal": "ok",
+            "low": "ok",
+            "medium": "ok",
+            "high": "ok",
+            "xhigh": "ok",
+            "max": "ok"
+          }
+        },
+        "claude-fable-5-1": {
+          "reasoning": {
+            "efforts": [
+              "off",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              "auto"
+            ],
+            "defaultEffort": null
+          },
+          "accepted": {
+            "off": "ok",
+            "minimal": "ok",
+            "low": "ok",
+            "medium": "ok",
+            "high": "ok",
+            "xhigh": "ok",
+            "max": "ok"
+          }
+        },
+        "glm-5.3-flashx": {
+          "reasoning": {
+            "efforts": [
+              "off",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              "auto"
+            ],
+            "defaultEffort": null
+          },
+          "accepted": {
+            "off": "ok",
+            "minimal": "ok",
+            "low": "ok",
+            "medium": "ok",
+            "high": "ok",
+            "xhigh": "ok",
+            "max": "ok"
+          }
+        }
+      }
+    }
+  },
+  "errors": []
+}

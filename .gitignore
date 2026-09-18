@@ -1,0 +1,9 @@
+node_modules/
+npm-debug.log*
+*.tgz
+
+# Scratch output from the throwaway verification probe; the committed report
+# lives in verification/.
+probe/
+probe2/
+probe*.log
