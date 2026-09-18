@@ -110,6 +110,7 @@ dsh plugin --profile <name> add dsh-auto-thinking-levels
 
 ```sh
 npm test          # node:test，20 个用例，零依赖
+npm run check:pack   # 断言 npm publish 会打包哪些文件
 ```
 
 `lib/plan.js` 是纯决策逻辑（可测、无 I/O），`index.js` 只负责读写 settings 与事件触发。
@@ -122,9 +123,27 @@ git push --follow-tags
 ```
 
 `.github/workflows/publish.yml` 会校验 tag 与 `package.json` 版本一致、跑测试、以
-provenance 发布到 npm，并开一个 GitHub Release。认证用 npm 的
-[trusted publishing](https://docs.npmjs.com/trusted-publishers)（OIDC），**不需要
-`NPM_TOKEN` secret** —— 前提是在 npmjs.com 的包设置里登记过本仓库与 workflow 名。
+provenance 发布到 npm，并开一个 GitHub Release。
+
+### 首次发布前的一次性配置
+
+工作流用 npm 的 [trusted publishing](https://docs.npmjs.com/trusted-publishers)（OIDC）认证，
+**不需要 `NPM_TOKEN` secret**。代价是必须在 npmjs.com 上登记一次信任关系
+（在包的 Settings → Trusted Publisher → GitHub Actions 填写）：
+
+| 字段 | 值 |
+| --- | --- |
+| Organization or user | `lolkda` |
+| Repository | `dsh-auto-thinking-levels` |
+| Workflow filename | `publish.yml` |
+| Environment | 留空 |
+
+这一步**必须走网页**：`npm trust github` 会被 npm 的策略拒绝
+（`403 Granular access tokens that bypass two-factor authentication may not perform this action`）——
+能发布包 ≠ 能改包的安全设置，所以命令行配不了。
+
+不想用 OIDC 的话，改成在仓库里加一个 `NPM_TOKEN` secret，并给发布步骤加上
+`env: NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`。
 
 ## License
 
