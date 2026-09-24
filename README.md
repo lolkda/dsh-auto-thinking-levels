@@ -64,7 +64,13 @@ dsh plugin --profile <name> add dsh-auto-thinking-levels
 
 因此是幂等的：第二遍扫描找不到要补的，就不写、不发事件，自然收敛。
 
-插件会监听该命名空间的变更与 adapter 拓扑变化，所以**你手改 `settings.yaml` 之后它会自己补回来**。
+插件会监听该命名空间的变更与 adapter 拓扑变化，所以**在 GUI 新增模型，或修改 profile 的 `cordis.patch.yml` 后，它会自动补齐**。
+
+DSH 0.1.7 的配置通知可能从 HMR 事务内发出。插件会退出该事务的异步上下文，
+再通过 `settings.update` 正常排队写入，避免 `HMR transactions cannot be nested`。
+单纯加 `setTimeout` 或微任务不能解决此问题，因为它们会继承原事务上下文。
+连续保存造成 revision 冲突时，已收到的新变更通知不会丢弃：下一遍重新读取最新配置，
+不会用旧模型列表覆盖新模型。已有档位、自定义值和显式 `false` 仍按上述规则保留。
 
 ## 两种路由
 
@@ -75,6 +81,11 @@ dsh plugin --profile <name> add dsh-auto-thinking-levels
   两种方式互斥：`models` 旁边放 `modelOverrides` 会被 adapter 拒绝。
 
 ## 已知边界
+
+HMR 事务兼容已在 DSH `0.1.7-rc.1` 验证，目前需要访问该版本的内部
+`hmr.executing`（`AsyncLocalStorage`）；不是稳定公开的跨版本接口，升级 DSH 后需重新验证。
+卸载后不会再提交新的补全写入；已交给 `settings.update` 的写入由宿主完成，插件不会在卸载时等待它，
+避免和 HMR 的串行队列互相等待。
 
 本插件只配置 `llm-pi-ai` 命名空间。**其它 adapter 不在作用域内，且有些无法被配置**：
 
@@ -109,7 +120,7 @@ dsh plugin --profile <name> add dsh-auto-thinking-levels
 ## 开发
 
 ```sh
-npm test          # node:test，31 个用例，零依赖
+npm test          # node:test，零依赖；含 HMR 事务及连续保存回归
 npm run check:pack   # 断言 npm publish 会打包哪些文件
 ```
 

@@ -85,11 +85,27 @@ export function apply(ctx, config) {
       cancel();
       timer = setTimeout(() => {
         timer = undefined;
-        void pump();
+        requestSync();
       }, delayMs);
       // `setTimeout` alone would keep a disposed profile alive for one tick.
       timer.unref?.();
     };
+
+    /**
+     * DSH 0.1.7 emits config/adapter events inside its HMR transaction. Calling
+     * settings.update in that async context is refused as a nested transaction;
+     * timers and microtasks inherit it too. Exit only HMR's AsyncLocalStorage
+     * context so settings.update can join the normal exclusive queue instead.
+     * This neither disables the caller's transaction nor bypasses the writer's
+     * lock, validation, or revision check. Hosts without HMR keep the direct path.
+     */
+    function requestSync() {
+      if (disposed) return;
+      const transaction = ctx.get('hmr')?.executing;
+      const run = () => { void pump(); };
+      if (typeof transaction?.exit === 'function') transaction.exit(run);
+      else run();
+    }
 
     /** Run passes until a pass settles, then stop; never overlaps. */
     async function pump() {
@@ -111,7 +127,7 @@ export function apply(ctx, config) {
             return;
           }
           attempt = 0;
-        } while (rerun);
+        } while (rerun && !disposed);
       } catch (error) {
         // A failed pass must never escape into the event bus: the settings
         // document is untouched, and the next trigger tries again.
@@ -119,6 +135,9 @@ export function apply(ctx, config) {
         ctx.logger.warn(error);
       } finally {
         running = false;
+        // A newer document can arrive while a queued write fails its revision
+        // check. Do not discard that trigger along with the stale pass.
+        if (rerun) requestSync();
       }
     }
 
@@ -160,7 +179,7 @@ export function apply(ctx, config) {
         if (overrides !== undefined) patch[route] = { modelOverrides: overrides };
       }
 
-      if (Object.keys(patch).length === 0) return 'done';
+      if (disposed || Object.keys(patch).length === 0) return 'done';
 
       ctx.logger.info(
         '[%s] %s: adding reasoningEfforts for %d model(s) across %d provider route(s) — %s',
@@ -210,11 +229,11 @@ export function apply(ctx, config) {
     // this one too, so naming it here is what keeps the reconcile alive across
     // every later document change on both.
     settingsCtx.on('settings/document-updated', (ns) => {
-      if (String(ns) === options.namespace) void pump();
+      if (String(ns) === options.namespace) requestSync();
     });
     // Routes appearing or disappearing re-shapes which models exist to cover.
-    settingsCtx.on('llm/adapters-updated', () => void pump());
+    settingsCtx.on('llm/adapters-updated', requestSync);
 
-    void pump();
+    requestSync();
   });
 }

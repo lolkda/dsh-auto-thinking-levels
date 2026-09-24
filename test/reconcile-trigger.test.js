@@ -40,15 +40,15 @@ function providerSection(ids) {
  * Mount the plugin against the smallest settings service the plugin uses.
  * @returns the recorded writes, the emit hooks, and the effect disposers.
  */
-function harness() {
+function harness({ section = providerSection(['model-a']), llm } = {}) {
   const updates = [];
   const listeners = new Map();
   const disposers = [];
   let document = {
     ns: 'llm-pi-ai',
     revision: 1,
-    user: providerSection(['model-a']),
-    value: providerSection(['model-a']),
+    user: section,
+    value: section,
   };
 
   const settings = {
@@ -74,7 +74,7 @@ function harness() {
     inject: (_names, callback) => {
       callback(scoped);
     },
-    get: () => undefined,
+    get: (name) => name === 'llm' ? llm : undefined,
   };
 
   apply(ctx, { enabled: true });
@@ -113,6 +113,25 @@ test('a settings document change announced by DSH 0.1.7 re-runs the pass', async
     ['model-a', 'model-b'],
     'the pass covers the models the new document declares',
   );
+});
+
+test('a catalog listing that finishes after disposal cannot submit a new settings write', async () => {
+  let finishListing;
+  let listings = 0;
+  const listing = new Promise((resolve) => { finishListing = resolve; });
+  const h = harness({
+    section: { providers: { catalog: {} } },
+    llm: { listModels() { listings += 1; return listing; } },
+  });
+  await settle();
+  assert.equal(h.updates.length, 0, 'the pass is waiting for the model catalog');
+  h.emit(DEPLOYMENT_SETTINGS_EVENT, 'llm-pi-ai', 1);
+
+  for (const dispose of h.disposers) dispose();
+  finishListing([{ id: 'new-model' }]);
+  await settle();
+  assert.equal(h.updates.length, 0, 'an unloaded plugin must not begin a settings write');
+  assert.equal(listings, 1, 'a pending trigger must not start another catalog lookup after disposal');
 });
 
 test('an announcement for another namespace leaves this one alone', async () => {

@@ -1,0 +1,60 @@
+{
+  "runtime": {
+    "dshVersion": "0.1.7-rc.1",
+    "guiUrl": "http://127.0.0.1:3080",
+    "pluginPatchLoaded": true,
+    "npmReleasePublishedAtVerification": false
+  },
+  "before": {
+    "error": "HMR transactions cannot be nested",
+    "cause": "The settings notification ran inside the HMR AsyncLocalStorage context; immediate settings.update was rejected before persistence.",
+    "modelsMissingReasoningEfforts": [
+      "claude-opus-5-5",
+      "deepseek-v4-flash:free",
+      "qwen3.8-flash:free",
+      "deepseek-v4-flash-0731",
+      "glm-5.3-flashx",
+      "mimo-v2.6-flash:free",
+      "mimo-v2.5:free"
+    ]
+  },
+  "after": {
+    "levels": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+    "configuredModels": 11,
+    "resolveCallConfigAccepted": 77,
+    "resolveCallConfigRejected": 0,
+    "guiHttpStatus": 200,
+    "providerInferenceRequestsSent": 0
+  },
+  "cleanBaselineReplay": {
+    "temporaryDiagnosticPlugins": 0,
+    "originalHmrWatchConfigurationRestored": true,
+    "input": {
+      "endpoint": "settings/mutate",
+      "namespace": "llm-pi-ai",
+      "operation": "Append a model containing only id to providers.cpa.models, using the current numeric expectedRevision.",
+      "modelId": "__auto_thinking_gui_regression__"
+    },
+    "newModelAutomaticallyFilledWithoutAnotherSave": true,
+    "catalogEndpoint": "session/modelCatalog",
+    "newModelCatalogLevelCount": 7,
+    "temporaryModelRemoved": true,
+    "finalModelCount": 11,
+    "finalRevision": 9
+  },
+  "checks": {
+    "npm test": { "passed": 38, "failed": 0 },
+    "npm run check:pack": { "passed": true, "files": 6 },
+    "redBeforeGreen": [
+      "models saved during an HMR transaction receive their missing thinking levels",
+      "mounting the plugin inside HMR also reconciles outside the mount transaction",
+      "consecutive GUI saves keep the pending pass after a revision conflict",
+      "a catalog listing that finishes after disposal cannot submit a new settings write"
+    ]
+  },
+  "boundaries": [
+    "The fix uses the private hmr.executing AsyncLocalStorage of the tested DSH version; future DSH upgrades require revalidation.",
+    "Harness capability and pre-dispatch validation were checked; upstream provider acceptance of each wire value was not tested.",
+    "The existing GUI HTTP endpoint and modelCatalog API were verified; no browser DOM click test was performed."
+  ]
+}
