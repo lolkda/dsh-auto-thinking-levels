@@ -181,13 +181,22 @@ test('the OIDC preflight refuses to run without an id-token', () => {
   assert.match(stdout, /::error::this job cannot mint an OIDC token/);
 });
 
-test('the OIDC preflight tells the operator what to register when npm refuses', () => {
+test('the OIDC preflight accepts any 2xx, because npm answers the exchange with 201', () => {
+  const script = stepScript(OIDC_PREFLIGHT_STEP);
+  assert.match(script, /if \[\[ "\$status" != 2\* \]\]; then/);
+  assert.doesNotMatch(script, /!= "200"/);
+});
+
+test('the OIDC preflight never prints the exchanged token, and says what to register', () => {
   const script = stepScript(OIDC_PREFLIGHT_STEP);
   assert.match(script, /oidc\/token\/exchange\/package\/\$\{package\}/);
   assert.match(script, /npmjs\.com\/package\/\$\{package\}\/access/);
   assert.match(script, /owner lolkda, repository dsh-auto-thinking-levels, workflow publish\.yml/);
   assert.match(script, /npm accepted the OIDC token exchange for \$\{package\}/);
-  // The exchange response carries a live token on success, so it may only ever
-  // be printed on the failure path.
-  assert.match(script, /if \[\[ "\$status" != "200" \]\]; then[\s\S]*cat \/tmp\/oidc-exchange\.json/);
+
+  // The 2xx body is a live short-lived npm token: never dumped, and removed
+  // after use. On failure only npm's own `message` field is echoed.
+  assert.doesNotMatch(script, /cat \/tmp\/oidc-exchange\.json/);
+  assert.match(script, /jq -r '\.message \/\/ empty' \/tmp\/oidc-exchange\.json/);
+  assert.match(script, /rm -f \/tmp\/oidc-exchange\.json/);
 });
