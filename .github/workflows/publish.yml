@@ -1,12 +1,33 @@
 name: Release
 
-# Tag a release and the workflow proves the tag matches package.json, runs the
-# suite, publishes to npm with a provenance attestation, and opens a GitHub
-# Release. Nothing is published from a branch.
+# Tag a release and this workflow proves the tag matches package.json, runs the
+# suite, packs the tarball it is about to ship, publishes to npm under the
+# dist-tag that version deserves, and opens a GitHub Release. Nothing is ever
+# published from a branch.
+#
+#   npm version patch && git push --follow-tags
+#
+# The dist-tag is derived from the version, not hardcoded:
+#
+#   version       dist-tag   `npm i <pkg>` gets it
+#   0.1.1         latest     yes
+#   0.1.1-rc.1    rc         no
+#   0.1.1-beta.2  beta       no
+#   0.1.1-next    next       no
+#
+# That derivation is load-bearing: npm refuses to publish a prerelease without
+# an explicit --tag ("You must specify a tag using --tag when publishing a
+# prerelease version"), which is why a version like 0.1.1-rc.1 cannot go out
+# through a bare `npm publish`, and why `latest` can never be hijacked by an rc.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Validate and pack only — do not publish'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -21,37 +42,100 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       # `contents: write` opens the GitHub Release.
-      # `id-token: write` is what npm trusted publishing and provenance need;
-      # there is deliberately no NPM_TOKEN secret to rotate.
+      # `id-token: write` is what the provenance attestation needs. It stays on
+      # so a switch to npm trusted publishing (OIDC, no token) also works.
       contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: https://registry.npmjs.org
-      - run: npm test
 
-      - name: The tag must name the version being published
+      - name: Prove the suite passes
+        run: npm test
+
+      - name: Prove the tarball is the one we mean to ship
+        run: npm run check:pack
+
+      - name: Resolve version, dist-tag and tarball name
+        id: release
         run: |
-          tag="${GITHUB_REF_NAME#v}"
-          pkg="$(node -p 'require("./package.json").version')"
-          if [ "$tag" != "$pkg" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $pkg"
+          set -euo pipefail
+          version="$(node -p 'require("./package.json").version')"
+
+          # On a tag push the tag must name the version being published.
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "${GITHUB_REF_NAME#v}" != "$version" ]]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
             exit 1
           fi
-          echo "publishing $pkg"
+
+          if [[ "$version" == *-* ]]; then
+            # 0.1.1-rc.1 -> rc | 1.0.0-beta.2 -> beta | 2.0.0-next -> next
+            id="${version#*-}"
+            id="${id%%.*}"
+            case "$id" in
+              alpha|beta|rc|next|canary|dev) tag="$id" ;;
+              *)
+                echo "::warning::unrecognised prerelease id '$id' — falling back to the 'next' dist-tag"
+                tag=next
+                ;;
+            esac
+            prerelease=true
+          else
+            tag=latest
+            prerelease=false
+          fi
+
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+          echo "shipping $version under the '$tag' dist-tag"
 
       - name: Publish
-        run: npm publish --provenance --access public
+        env:
+          # Token auth. If this secret is ever removed, register the repo as a
+          # trusted publisher on npmjs.com and the OIDC path takes over.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
+        run: |
+          set -euo pipefail
+          args=(--provenance --access public --tag "$TAG")
+          if [[ "$DRY_RUN" == "true" ]]; then
+            args+=(--dry-run)
+            echo "::notice::dry run — the tarball is validated but nothing is published"
+          fi
+          npm publish "${args[@]}"
+
+      - name: Prove the published version is actually on npm
+        if: ${{ inputs.dry_run != true && github.event_name == 'push' }}
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Read it back from the registry rather than trusting the publish exit code.
+          published="$(npm view "dsh-auto-thinking-levels@$TAG" version --registry=https://registry.npmjs.org)"
+          if [[ "$published" != "$VERSION" ]]; then
+            echo "::error::dist-tag $TAG points at $published, expected $VERSION"
+            exit 1
+          fi
+          echo "dist-tag $TAG -> $published"
 
       - name: GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: ${{ inputs.dry_run != true && startsWith(github.ref, 'refs/tags/') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ steps.release.outputs.prerelease }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes \
-            --verify-tag
+          set -euo pipefail
+          args=(--title "$GITHUB_REF_NAME" --generate-notes --verify-tag)
+          if [[ "$PRERELEASE" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" "${args[@]}"

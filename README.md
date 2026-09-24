@@ -109,27 +109,53 @@ dsh plugin --profile <name> add dsh-auto-thinking-levels
 ## 开发
 
 ```sh
-npm test          # node:test，20 个用例，零依赖
+npm test          # node:test，29 个用例，零依赖
 npm run check:pack   # 断言 npm publish 会打包哪些文件
 ```
 
 `lib/plan.js` 是纯决策逻辑（可测、无 I/O），`index.js` 只负责读写 settings 与事件触发。
 
+## 发布
+
 发布走 tag：
 
 ```sh
-npm version patch
+npm version patch        # 0.1.1-rc.1 -> 0.1.1，或 npm version prerelease --preid rc
 git push --follow-tags
 ```
 
-`.github/workflows/publish.yml` 会校验 tag 与 `package.json` 版本一致、跑测试、以
-provenance 发布到 npm，并开一个 GitHub Release。
+`.github/workflows/publish.yml` 会校验 tag 与 `package.json` 版本一致、跑测试、断言打包内容、
+以 provenance 发布到 npm，并开一个 GitHub Release。**只由 tag 触发**，从分支上发不出任何东西。
 
-### 首次发布前的一次性配置
+### dist-tag 由版本号推导，不写死
 
-工作流用 npm 的 [trusted publishing](https://docs.npmjs.com/trusted-publishers)（OIDC）认证，
-**不需要 `NPM_TOKEN` secret**。代价是必须在 npmjs.com 上登记一次信任关系
-（在包的 Settings → Trusted Publisher → GitHub Actions 填写）：
+| `package.json` 版本 | dist-tag | `npm i dsh-auto-thinking-levels` 会拿到它吗 |
+| --- | --- | --- |
+| `0.1.1` | `latest` | 会 |
+| `0.1.1-rc.1` | `rc` | 不会 |
+| `1.0.0-beta.2` | `beta` | 不会 |
+| `2.0.0-next` | `next` | 不会 |
+| `3.0.0-preview.1` | `next`（并告警） | 不会 |
+
+这一步是必需的，不是风格问题：npm 拒绝在没有显式 `--tag` 时发布 prerelease
+（`You must specify a tag using --tag when publishing a prerelease version.`），
+所以 `0.1.1-rc.1` 走裸的 `npm publish` 必然失败；同时这条规则保证了 rc 永远顶不掉 `latest`。
+推导逻辑由 `test/release-dist-tag.test.js` 直接抽出 workflow 里的脚本执行验证。
+
+想先看不发：在 Actions 页面手动 dispatch `Release`，`dry_run` 默认为 `true`，
+只会跑测试、断言 tarball、`npm publish --dry-run`。
+
+### 凭据
+
+发布用仓库 secret `NPM_TOKEN`（Granular Access Token，需要包的 read/write 权限）：
+
+```sh
+gh secret set NPM_TOKEN --repo lolkda/dsh-auto-thinking-levels
+```
+
+工作流保留了 `id-token: write`，所以如果以后改用 npm 的
+[trusted publishing](https://docs.npmjs.com/trusted-publishers)（OIDC，无需 secret），
+在 npmjs.com 的包设置里登记一次即可，workflow 文件名必须仍是 `publish.yml`：
 
 | 字段 | 值 |
 | --- | --- |
@@ -141,9 +167,6 @@ provenance 发布到 npm，并开一个 GitHub Release。
 这一步**必须走网页**：`npm trust github` 会被 npm 的策略拒绝
 （`403 Granular access tokens that bypass two-factor authentication may not perform this action`）——
 能发布包 ≠ 能改包的安全设置，所以命令行配不了。
-
-不想用 OIDC 的话，改成在仓库里加一个 `NPM_TOKEN` secret，并给发布步骤加上
-`env: NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`。
 
 ## License
 
