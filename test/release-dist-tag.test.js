@@ -15,7 +15,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -31,6 +31,9 @@ const PUBLISH_STEP = 'Publish';
 
 /** The step that proves npm trusts this workflow before a release is spent. */
 const OIDC_PREFLIGHT_STEP = 'Prove npm trusts this workflow before spending a release on it';
+
+/** The step that reads the version back out of the registry. */
+const READ_BACK_STEP = 'Prove the published version is actually on npm';
 
 /**
  * Pull one step's `run: |` block out of the workflow so it can be executed.
@@ -73,6 +76,32 @@ function runScript({ name, pkg = { name: 'dsh-auto-thinking-levels', version: '0
   });
   rmSync(dir, { recursive: true, force: true });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+}
+
+/**
+ * Install a stub `npm` on PATH that reports the old version until a given call.
+ * @param options - the call number from which the stub reports 0.1.1.
+ * @returns the stub's bin directory, its call counter, and its temp root.
+ */
+function stubNpm({ freshAt }) {
+  const dir = mkdtempSync(join(tmpdir(), 'stub-npm-'));
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  const counter = join(dir, 'calls');
+  writeFileSync(
+    join(bin, 'npm'),
+    [
+      '#!/usr/bin/env bash',
+      'n=0',
+      '[[ -f "$STUB_COUNTER" ]] && n="$(cat "$STUB_COUNTER")"',
+      'n=$(( n + 1 ))',
+      'echo "$n" > "$STUB_COUNTER"',
+      '[[ "$n" -ge "$STUB_FRESH_AT" ]] && echo 0.1.1 || echo 0.1.0',
+      '',
+    ].join('\n'),
+    { mode: 0o755 },
+  );
+  return { dir, bin, counter };
 }
 
 /**
@@ -153,6 +182,53 @@ test('a manual dispatch skips the tag check but still derives the tag', () => {
   assert.equal(status, 0);
   assert.equal(outputs.tag, 'rc');
   assert.equal(outputs.prerelease, 'true');
+});
+
+test('the read-back waits out npm publish lag instead of failing a shipped release', () => {
+  const stub = stubNpm({ freshAt: 3 });
+  const { status, stdout } = runScript({
+    name: READ_BACK_STEP,
+    env: {
+      PATH: `${stub.bin}:${process.env.PATH}`,
+      STUB_COUNTER: stub.counter,
+      STUB_FRESH_AT: '3',
+      VERSION: '0.1.1',
+      TAG: 'latest',
+      RETRY_SLEEP: '0',
+    },
+  });
+  rmSync(stub.dir, { recursive: true, force: true });
+
+  assert.equal(status, 0);
+  // The stale first read is what broke a real release of 0.1.1 (npm took 131s
+  // to serve it), so the retry has to be visible, not just the final answer.
+  assert.match(stdout, /attempt 1: dist-tag latest -> 0\.1\.0/);
+  assert.match(stdout, /dist-tag latest -> 0\.1\.1/);
+  assert.doesNotMatch(stdout, /::warning::/);
+});
+
+test('the read-back warns, never fails, when the registry stays behind', () => {
+  const stub = stubNpm({ freshAt: 999 });
+  const { status, stdout } = runScript({
+    name: READ_BACK_STEP,
+    env: {
+      PATH: `${stub.bin}:${process.env.PATH}`,
+      STUB_COUNTER: stub.counter,
+      STUB_FRESH_AT: '999',
+      VERSION: '0.1.1',
+      TAG: 'latest',
+      RETRY_SLEEP: '0',
+    },
+  });
+  const calls = readFileSync(stub.counter, 'utf8').trim();
+  rmSync(stub.dir, { recursive: true, force: true });
+
+  // A release that already shipped must not be reported as broken: the Publish
+  // step is the evidence, this step only reports propagation.
+  assert.equal(status, 0);
+  assert.equal(calls, '20');
+  assert.match(stdout, /::warning::the registry still reports latest -> 0\.1\.0 after 20 attempts/);
+  assert.match(stdout, /re-check with: npm view/);
 });
 
 test('the publish step is handed the derived tag and mints its own credential', () => {

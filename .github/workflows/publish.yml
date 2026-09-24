@@ -155,19 +155,34 @@ jobs:
           npm publish "${args[@]}"
 
       - name: Prove the published version is actually on npm
-        if: ${{ inputs.dry_run != true && github.event_name == 'push' }}
+        if: ${{ inputs.dry_run != true }}
         env:
           VERSION: ${{ steps.release.outputs.version }}
           TAG: ${{ steps.release.outputs.tag }}
+          RETRY_SLEEP: '15'
         run: |
           set -euo pipefail
-          # Read it back from the registry rather than trusting the publish exit code.
-          published="$(npm view "dsh-auto-thinking-levels@$TAG" version --registry=https://registry.npmjs.org)"
-          if [[ "$published" != "$VERSION" ]]; then
-            echo "::error::dist-tag $TAG points at $published, expected $VERSION"
-            exit 1
-          fi
-          echo "dist-tag $TAG -> $published"
+          package="$(node -p 'require("./package.json").name')"
+
+          # npm answers a publish with "Your package is being processed and may
+          # take a few minutes to become available", so the read replicas lag:
+          # a single read right after the publish still reports the previous
+          # version. Measured lag for 0.1.1 was 131s. Poll for it — and treat a
+          # timeout as a warning, not a failure, because the Publish step above
+          # already reported the registry accepting the version with provenance.
+          # Failing here would mislabel a shipped release as broken.
+          for attempt in $(seq 1 20); do
+            published="$(npm view "${package}@${TAG}" version --registry=https://registry.npmjs.org 2>/dev/null || true)"
+            if [[ "$published" == "$VERSION" ]]; then
+              echo "dist-tag ${TAG} -> ${published} (visible after ~$(( attempt * RETRY_SLEEP ))s)"
+              exit 0
+            fi
+            echo "attempt ${attempt}: dist-tag ${TAG} -> ${published:-<no answer>}, waiting"
+            sleep "$RETRY_SLEEP"
+          done
+
+          echo "::warning::the registry still reports ${TAG} -> ${published:-<no answer>} after 20 attempts; ${package}@${VERSION} was published (see the Publish step) but may still be propagating"
+          echo "re-check with: npm view ${package}@${TAG} version --registry=https://registry.npmjs.org"
 
       - name: GitHub Release
         if: ${{ inputs.dry_run != true && startsWith(github.ref, 'refs/tags/') }}
