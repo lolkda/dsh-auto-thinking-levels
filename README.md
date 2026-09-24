@@ -109,7 +109,7 @@ dsh plugin --profile <name> add dsh-auto-thinking-levels
 ## 开发
 
 ```sh
-npm test          # node:test，29 个用例，零依赖
+npm test          # node:test，31 个用例，零依赖
 npm run check:pack   # 断言 npm publish 会打包哪些文件
 ```
 
@@ -142,20 +142,18 @@ git push --follow-tags
 所以 `0.1.1-rc.1` 走裸的 `npm publish` 必然失败；同时这条规则保证了 rc 永远顶不掉 `latest`。
 推导逻辑由 `test/release-dist-tag.test.js` 直接抽出 workflow 里的脚本执行验证。
 
-想先看不发：在 Actions 页面手动 dispatch `Release`，`dry_run` 默认为 `true`，
-只会跑测试、断言 tarball、`npm publish --dry-run`。
+想先看不发，或者想确认 OIDC 登记好了没有：在 Actions 页面手动 dispatch `Release`，
+`dry_run` 默认为 `true` —— 测试、tarball 断言、OIDC 换取都会真跑，只有 `npm publish` 带 `--dry-run`。
+所以一次 dry run 就能回答"这个仓库现在能不能发布"。
 
-### 凭据
+### 凭据：npm Trusted Publishing（OIDC），没有 secret
 
-发布用仓库 secret `NPM_TOKEN`（Granular Access Token，需要包的 read/write 权限）：
+发布不用任何长期 token。job 里的 `id-token: write` 让 npm 用这次运行的 OIDC 身份换取一个
+短时效发布令牌（[trusted publishing](https://docs.npmjs.com/trusted-publishers)），
+公开仓库 + 公开包还会自动开启 provenance。仓库里**不存在** `NPM_TOKEN`，
+`test/release-dist-tag.test.js` 会断言工作流里不出现任何 token 注入。
 
-```sh
-gh secret set NPM_TOKEN --repo lolkda/dsh-auto-thinking-levels
-```
-
-工作流保留了 `id-token: write`，所以如果以后改用 npm 的
-[trusted publishing](https://docs.npmjs.com/trusted-publishers)（OIDC，无需 secret），
-在 npmjs.com 的包设置里登记一次即可，workflow 文件名必须仍是 `publish.yml`：
+代价是必须先登记一次信任关系——在 npmjs.com 的包设置里填（workflow 文件名必须仍是 `publish.yml`）：
 
 | 字段 | 值 |
 | --- | --- |
@@ -164,9 +162,27 @@ gh secret set NPM_TOKEN --repo lolkda/dsh-auto-thinking-levels
 | Workflow filename | `publish.yml` |
 | Environment | 留空 |
 
-这一步**必须走网页**：`npm trust github` 会被 npm 的策略拒绝
-（`403 Granular access tokens that bypass two-factor authentication may not perform this action`）——
-能发布包 ≠ 能改包的安全设置，所以命令行配不了。
+这一步**必须走网页**：命令行配不了。`npm trust github` 会被 npm 拒绝，
+因为能发布包 ≠ 能改包的安全设置：
+
+```
+$ npm trust list dsh-auto-thinking-levels
+npm error 401 Unauthorized - GET https://registry.npmjs.org/-/package/dsh-auto-thinking-levels/trust
+$ npm trust github dsh-auto-thinking-levels --file publish.yml --repo lolkda/dsh-auto-thinking-levels --allow-publish
+npm error 401 Unauthorized - POST https://registry.npmjs.org/-/package/dsh-auto-thinking-levels/trust
+```
+
+（上面两条都是用一个 granular token 跑的，`npm whoami` 正常但改安全设置就是 401。）
+
+没登记之前，发布会被 workflow 里那道 preflight 明确拦下，而不是给一个看不懂的 `ENEEDAUTH`：
+
+```
+::error::npm refused the OIDC token exchange (HTTP 404)
+Register the trusted publisher at https://www.npmjs.com/package/dsh-auto-thinking-levels/access
+```
+
+这道 preflight 就是 `npm publish` 内部会做的同一次 OIDC 换取，只是提前跑、并且自己解释失败原因；
+它成功打印 `npm accepted the OIDC token exchange for dsh-auto-thinking-levels` 才继续发布。
 
 ## License
 

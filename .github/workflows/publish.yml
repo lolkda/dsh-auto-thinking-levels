@@ -19,6 +19,10 @@ name: Release
 # an explicit --tag ("You must specify a tag using --tag when publishing a
 # prerelease version"), which is why a version like 0.1.1-rc.1 cannot go out
 # through a bare `npm publish`, and why `latest` can never be hijacked by an rc.
+#
+# The credential is npm trusted publishing: this job's OIDC identity is
+# exchanged for a short-lived publish token, so there is no NPM_TOKEN secret.
+# See "## 发布 / 凭据" in README.md for the one-time registration.
 on:
   push:
     tags: ['v*']
@@ -42,8 +46,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       # `contents: write` opens the GitHub Release.
-      # `id-token: write` is what the provenance attestation needs. It stays on
-      # so a switch to npm trusted publishing (OIDC, no token) also works.
+      # `id-token: write` is the whole credential: npm exchanges this job's OIDC
+      # token for a short-lived publish token, so there is no NPM_TOKEN secret
+      # to store, rotate, leak or accidentally reuse.
       contents: write
       id-token: write
     steps:
@@ -96,15 +101,48 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "shipping $version under the '$tag' dist-tag"
 
+      - name: Prove npm trusts this workflow before spending a release on it
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
+            echo "::error::this job cannot mint an OIDC token — it needs \`permissions: id-token: write\`"
+            exit 1
+          fi
+
+          package="$(node -p 'require("./package.json").name')"
+
+          # Mint a GitHub OIDC token for npm's audience and exchange it by hand.
+          # npm does this itself inside `npm publish`, but when the trusted
+          # publisher is not registered yet it fails as an opaque ENEEDAUTH;
+          # doing it here first turns that into "register it, here is the link".
+          id_token="$(curl -sSf \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org" | jq -r .value)"
+
+          status="$(curl -sS -o /tmp/oidc-exchange.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer ${id_token}" \
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${package}")"
+
+          if [[ "$status" != "200" ]]; then
+            # The body carries a token on success, so only ever print it on failure.
+            echo "::error::npm refused the OIDC token exchange (HTTP $status)"
+            echo "Register the trusted publisher at https://www.npmjs.com/package/${package}/access"
+            echo "  Trusted Publisher -> GitHub Actions: owner lolkda, repository dsh-auto-thinking-levels, workflow publish.yml, environment blank"
+            cat /tmp/oidc-exchange.json || true
+            exit 1
+          fi
+
+          echo "npm accepted the OIDC token exchange for ${package}"
+
       - name: Publish
         env:
-          # Token auth. If this secret is ever removed, register the repo as a
-          # trusted publisher on npmjs.com and the OIDC path takes over.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TAG: ${{ steps.release.outputs.tag }}
           DRY_RUN: ${{ inputs.dry_run || false }}
         run: |
           set -euo pipefail
+          # No stored npm token: npm mints a short-lived one from the job's OIDC
+          # identity, and enables provenance for a public repo and package.
           args=(--provenance --access public --tag "$TAG")
           if [[ "$DRY_RUN" == "true" ]]; then
             args+=(--dry-run)

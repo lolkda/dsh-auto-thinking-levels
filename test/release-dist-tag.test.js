@@ -29,6 +29,9 @@ const RESOLVE_STEP = 'Resolve version, dist-tag and tarball name';
 /** The step that actually publishes. */
 const PUBLISH_STEP = 'Publish';
 
+/** The step that proves npm trusts this workflow before a release is spent. */
+const OIDC_PREFLIGHT_STEP = 'Prove npm trusts this workflow before spending a release on it';
+
 /**
  * Pull one step's `run: |` block out of the workflow so it can be executed.
  * @param name - the step's `name:` value.
@@ -53,6 +56,23 @@ function stepScript(name) {
     ...body.filter((line) => line.trim() !== '').map((line) => line.length - line.trimStart().length),
   );
   return body.map((line) => line.slice(contentIndent)).join('\n');
+}
+
+/**
+ * Run one workflow step script in a throwaway directory.
+ * @param options - the step name, the declared package.json fields, and extra env.
+ * @returns the exit status and both streams.
+ */
+function runScript({ name, pkg = { name: 'dsh-auto-thinking-levels', version: '0.1.1' }, env = {} }) {
+  const dir = mkdtempSync(join(tmpdir(), 'release-step-'));
+  writeFileSync(join(dir, 'package.json'), `${JSON.stringify(pkg)}\n`);
+  const result = spawnSync('bash', ['-c', stepScript(name)], {
+    cwd: dir,
+    env: { ...process.env, ...env },
+    encoding: 'utf8',
+  });
+  rmSync(dir, { recursive: true, force: true });
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
 /**
@@ -135,12 +155,38 @@ test('a manual dispatch skips the tag check but still derives the tag', () => {
   assert.equal(outputs.prerelease, 'true');
 });
 
-test('the publish step is handed the derived tag and the token', () => {
+test('the publish step is handed the derived tag and mints its own credential', () => {
   const publish = stepScript(PUBLISH_STEP);
   assert.match(publish, /npm publish "\$\{args\[@\]\}"/);
   assert.match(publish, /--tag "\$TAG"/);
   assert.match(publish, /args\+=\(--dry-run\)/);
 
+  // Trusted publishing: the credential is the job's OIDC identity, so nothing
+  // may thread a token in — a stored token here would silently shadow OIDC.
+  assert.doesNotMatch(publish, /NODE_AUTH_TOKEN/);
   const yaml = readFileSync(WORKFLOW, 'utf8');
-  assert.match(yaml, /NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
+  assert.doesNotMatch(yaml, /secrets\.NPM_TOKEN/);
+  assert.doesNotMatch(yaml, /NODE_AUTH_TOKEN/);
+  assert.match(yaml, /id-token: write/);
+});
+
+test('the OIDC preflight refuses to run without an id-token', () => {
+  const env = { ...process.env };
+  delete env.ACTIONS_ID_TOKEN_REQUEST_URL;
+  delete env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+
+  const { status, stdout } = runScript({ name: OIDC_PREFLIGHT_STEP, env });
+  assert.equal(status, 1);
+  assert.match(stdout, /::error::this job cannot mint an OIDC token/);
+});
+
+test('the OIDC preflight tells the operator what to register when npm refuses', () => {
+  const script = stepScript(OIDC_PREFLIGHT_STEP);
+  assert.match(script, /oidc\/token\/exchange\/package\/\$\{package\}/);
+  assert.match(script, /npmjs\.com\/package\/\$\{package\}\/access/);
+  assert.match(script, /owner lolkda, repository dsh-auto-thinking-levels, workflow publish\.yml/);
+  assert.match(script, /npm accepted the OIDC token exchange for \$\{package\}/);
+  // The exchange response carries a live token on success, so it may only ever
+  // be printed on the failure path.
+  assert.match(script, /if \[\[ "\$status" != "200" \]\]; then[\s\S]*cat \/tmp\/oidc-exchange\.json/);
 });
