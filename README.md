@@ -146,6 +146,16 @@ git push --follow-tags
 `dry_run` 默认为 `true` —— 测试、tarball 断言、OIDC 换取都会真跑，只有 `npm publish` 带 `--dry-run`。
 所以一次 dry run 就能回答"这个仓库现在能不能发布"。
 
+注意 npm 的重复版本检查在 `--dry-run` 下同样生效：如果 `package.json` 的版本已经发布过
+（比如刚发完 `0.1.1`，而工作区版本号还是 `0.1.1`），dry run 会在 Publish 步骤报
+`You cannot publish over the previously published versions: 0.1.1.` —— 这是预期行为，
+不是流水线坏了；要 dry run 一个已发布的版本，先升版本号。
+
+发布后的回读是**轮询**的：npm 会对 publish 回一句 "Your package is being processed and may take
+a few minutes to become available"，读副本滞后（实测 `0.1.1` 是 131 秒）。轮询 5 分钟仍没等到时只
+`::warning::` 而不失败，因为发布是否成功以 Publish 步骤的输出（registry 接受 + provenance 签名）为准，
+把已发布的版本标成红会误导人。
+
 ### 凭据：npm Trusted Publishing（OIDC），没有 secret
 
 发布不用任何长期 token。job 里的 `id-token: write` 让 npm 用这次运行的 OIDC 身份换取一个
