@@ -204,7 +204,12 @@ export function apply(ctx, config) {
       cancel();
     });
 
-    settingsCtx.on('settings/updated', (ns) => {
+    // The one settings event DSH 0.1.7-rc.1 emits. Its predecessor
+    // (`settings/updated`, carrying the resolved value and the change source)
+    // was removed with `settings.register`, and 0.1.6-alpha.2 already emitted
+    // this one too, so naming it here is what keeps the reconcile alive across
+    // every later document change on both.
+    settingsCtx.on('settings/document-updated', (ns) => {
       if (String(ns) === options.namespace) void pump();
     });
     // Routes appearing or disappearing re-shapes which models exist to cover.
