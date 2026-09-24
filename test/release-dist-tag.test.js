@@ -171,11 +171,12 @@ test('the publish step is handed the derived tag and mints its own credential', 
 });
 
 test('the OIDC preflight refuses to run without an id-token', () => {
-  const env = { ...process.env };
-  delete env.ACTIONS_ID_TOKEN_REQUEST_URL;
-  delete env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
-
-  const { status, stdout } = runScript({ name: OIDC_PREFLIGHT_STEP, env });
+  // Blank rather than deleted: `runScript` merges over process.env, and on a
+  // GitHub runner these two are genuinely set, so deleting them would not stick.
+  const { status, stdout } = runScript({
+    name: OIDC_PREFLIGHT_STEP,
+    env: { ACTIONS_ID_TOKEN_REQUEST_URL: '', ACTIONS_ID_TOKEN_REQUEST_TOKEN: '' },
+  });
   assert.equal(status, 1);
   assert.match(stdout, /::error::this job cannot mint an OIDC token/);
 });
